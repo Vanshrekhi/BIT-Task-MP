@@ -1,4 +1,5 @@
 import asyncHandler from "express-async-handler";
+import PDFDocument from "pdfkit";
 import Notice from "../models/notis.js";
 import Task from "../models/taskModel.js";
 import User from "../models/userModel.js";
@@ -17,11 +18,15 @@ import {
 
 async function maybeNotifyTaskCompleted(taskDoc, completedByUserId) {
   if (taskDoc.stage !== "completed") return;
-  if (!taskDoc.createdBy) return;
-  if (String(taskDoc.createdBy) === String(completedByUserId)) return;
   if (!isEmailConfigured()) return;
 
-  const creator = await User.findById(taskDoc.createdBy).select("email name");
+  const assignerId =
+    taskDoc.createdBy ||
+    taskDoc.activities?.find((a) => String(a?.type || "").toLowerCase() === "assigned")?.by;
+  if (!assignerId) return;
+  if (String(assignerId) === String(completedByUserId)) return;
+
+  const creator = await User.findById(assignerId).select("email name");
   if (!creator?.email) return;
 
   const completer = await User.findById(completedByUserId).select("name");
@@ -259,6 +264,16 @@ const updateTaskStage = asyncHandler(async (req, res) => {
 
     const prevStage = String(task.stage || "").toLowerCase();
     task.stage = stage.toLowerCase();
+    task.activities.push({
+      type:
+        task.stage === "completed"
+          ? "completed"
+          : task.stage === "in progress"
+            ? "in progress"
+            : "started",
+      activity: `Task status changed from ${prevStage || "todo"} to ${task.stage}.`,
+      by: userId,
+    });
 
     await task.save();
 
@@ -304,7 +319,7 @@ const getTasks = asyncHandler(async (req, res) => {
   const { stage, isTrashed, search } = req.query;
 
   const r = normalizeRole(role);
-  const isPrincipal = isAdmin || r === "Principal";
+  const isPrincipal = isAdmin;
 
   let query = { isTrashed: isTrashed ? true : false };
 
@@ -461,7 +476,7 @@ const dashboardStatistics = asyncHandler(async (req, res) => {
   try {
     const { userId, isAdmin, role, department } = req.user;
     const r = normalizeRole(role);
-    const isPrincipal = isAdmin || r === "Principal";
+    const isPrincipal = isAdmin;
 
     let taskQuery = { isTrashed: false };
     if (!isPrincipal) {
@@ -551,10 +566,105 @@ const dashboardStatistics = asyncHandler(async (req, res) => {
   }
 });
 
+const downloadTaskReportPdf = asyncHandler(async (req, res) => {
+  const { userId, isAdmin, role, department } = req.user;
+  const period = String(req.query.period || "all").toLowerCase();
+  const now = new Date();
+  const fromDate = period === "yearly" ? new Date(now.getFullYear(), 0, 1) : null;
+
+  const r = normalizeRole(role);
+  const isPrincipal = isAdmin;
+
+  let query = { isTrashed: false };
+  if (!isPrincipal) {
+    if (r === "HOD") {
+      const dept = normalizeDept(department);
+      const deptUserIds = await User.find({
+        department: dept,
+        status: "approved",
+      }).distinct("_id");
+      query.$or = [
+        { team: userId },
+        { createdBy: userId },
+        { team: { $in: deptUserIds } },
+        { createdBy: { $in: deptUserIds } },
+      ];
+    } else if (r === "Faculty") {
+      query.$or = [{ team: userId }, { createdBy: userId }];
+    } else {
+      query.team = userId;
+    }
+  }
+  if (fromDate) {
+    query.createdAt = { $gte: fromDate };
+  }
+
+  const tasks = await Task.find(query).sort({ createdAt: 1 }).select("title stage priority createdAt date");
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter((t) => String(t.stage).toLowerCase() === "completed").length;
+  const pendingTasks = totalTasks - completedTasks;
+  const completionRate = totalTasks ? ((completedTasks / totalTasks) * 100).toFixed(2) : "0.00";
+
+  const timeline = tasks.reduce((acc, task) => {
+    const key = new Date(task.createdAt).toISOString().slice(0, 7);
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const reportTitle = period === "yearly" ? `Yearly Task Report (${now.getFullYear()})` : "Task Completion Report";
+  const fileName = period === "yearly" ? `task-report-yearly-${now.getFullYear()}.pdf` : "task-report.pdf";
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+
+  const doc = new PDFDocument({ margin: 50, size: "A4" });
+  doc.pipe(res);
+
+  doc.fontSize(18).text(reportTitle, { underline: true });
+  doc.moveDown(0.6);
+  doc.fontSize(11).text(`Generated on: ${now.toDateString()}`);
+  doc.text(`Scope: ${period === "yearly" ? "Current Year" : "All Time"}`);
+  doc.moveDown();
+
+  doc.fontSize(14).text("Summary");
+  doc.fontSize(11).text(`Total tasks: ${totalTasks}`);
+  doc.text(`Completed tasks: ${completedTasks}`);
+  doc.text(`Pending tasks: ${pendingTasks}`);
+  doc.text(`Completion rate: ${completionRate}%`);
+  doc.moveDown();
+
+  doc.fontSize(14).text("Timeline");
+  if (!Object.keys(timeline).length) {
+    doc.fontSize(11).text("No timeline data available.");
+  } else {
+    Object.entries(timeline).forEach(([month, count]) => {
+      doc.fontSize(11).text(`${month}: ${count} task(s)`);
+    });
+  }
+
+  doc.moveDown();
+  doc.fontSize(14).text("Completed Tasks");
+  const completedList = tasks.filter((t) => String(t.stage).toLowerCase() === "completed");
+  if (!completedList.length) {
+    doc.fontSize(11).text("No completed tasks in selected period.");
+  } else {
+    completedList.forEach((task, idx) => {
+      doc
+        .fontSize(10)
+        .text(
+          `${idx + 1}. ${task.title} | Priority: ${task.priority} | Due: ${new Date(task.date).toDateString()}`
+        );
+    });
+  }
+
+  doc.end();
+});
+
 export {
   createSubTask,
   createTask,
   dashboardStatistics,
+  downloadTaskReportPdf,
   deleteRestoreTask,
   duplicateTask,
   getTask,

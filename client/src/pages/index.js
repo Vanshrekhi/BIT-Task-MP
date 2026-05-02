@@ -10,6 +10,8 @@ import TaskDetail from "./TaskDetail";
 import Tasks from "./Tasks";
 import Trash from "./Trash";
 import Users from "./Users";
+import Settings from "./Settings";
+import Students from "./Students";
 
 export {
   Dashboard,
@@ -24,4 +26,6 @@ export {
   Tasks,
   Trash,
   Users,
+  Settings,
+  Students,
 };

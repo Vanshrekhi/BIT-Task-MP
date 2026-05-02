@@ -37,7 +37,26 @@ const protectRoute = asyncHandler(async (req, res, next) => {
 
       next();
     } catch (error) {
-      console.error(error);
+      // Clear invalid/expired token cookie so client can login again cleanly.
+      res.cookie("token", "", {
+        httpOnly: true,
+        expires: new Date(0),
+      });
+
+      if (error?.name === "TokenExpiredError") {
+        return res.status(401).json({
+          status: false,
+          message: "Session expired. Please login again.",
+        });
+      }
+
+      if (error?.name === "JsonWebTokenError") {
+        return res.status(401).json({
+          status: false,
+          message: "Invalid session. Please login again.",
+        });
+      }
+
       return res
         .status(401)
         .json({ status: false, message: "Not authorized. Try login again." });

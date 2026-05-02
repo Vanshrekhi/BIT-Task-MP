@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button, Loading, Textbox } from "../components";
 import { useRegisterMutation } from "../redux/slices/api/authApiSlice";
 
-const ROLES = ["Principal", "HOD", "Faculty", "Student"];
+const ROLES = ["Admin", "Principal", "HOD", "Faculty", "Student"];
 const DEPARTMENTS = ["COMP", "IT", "ENTC", "MECH", "CIVIL", "OTHER"];
 const YEARS = ["FE", "SE", "TE", "BE"];
 const FACULTY_ROLES = ["Faculty", "Student Incharge", "Project Guide"];
@@ -37,7 +37,7 @@ const Register = () => {
 
   const roleHint = useMemo(() => {
     if (!role) return "Select a role to continue.";
-    if (role === "Principal") return "Principal accounts are created with a secret key.";
+    if (role === "Admin") return "Admin accounts are created with a secret key.";
     return "Your account will be pending until approved.";
   }, [role]);
 
@@ -116,12 +116,12 @@ const Register = () => {
                 className='border border-gray-300 rounded px-2 py-1.5 text-sm outline-none focus:ring-2 ring-blue-300'
                 {...register("department", {
                   validate: (val) => {
-                    if (role === "Principal") return true;
+                    if (role === "Principal" || role === "Admin") return true;
                     if (!role) return true;
                     return val ? true : "Department is required!";
                   },
                 })}
-                disabled={!role || role === "Principal"}
+                disabled={!role || role === "Principal" || role === "Admin"}
               >
                 <option value=''>Select</option>
                 {DEPARTMENTS.map((d) => (
@@ -179,7 +179,7 @@ const Register = () => {
             error={errors.email?.message || ""}
           />
 
-          {role === "Principal" && (
+          {role === "Admin" && (
             <Textbox
               placeholder='Secret key'
               type='password'

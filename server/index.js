@@ -13,6 +13,7 @@ import { registerChatHandlers } from "./socket/chat.js";
 import dbConnection from "./utils/connectDB.js";
 import cron from "node-cron";
 import { enqueueReminderScan, startReminderWorker } from "./queues/reminderQueue.js";
+import { processReminderScanJob } from "./jobs/taskReminder.js";
 
 const port = process.env.PORT || 5000;
 const allowedOrigins = [
@@ -66,7 +67,7 @@ io.use(async (socket, next) => {
     if (!token) return next(new Error("Unauthorized"));
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId).select("_id name email");
+    const user = await User.findById(decoded.userId).select("_id name email role");
     if (!user) return next(new Error("Unauthorized"));
 
     socket.user = user;
@@ -87,9 +88,14 @@ const start = async () => {
 
   // Cron: enqueue a scan job every hour (BullMQ processes it)
   cron.schedule("0 * * * *", () => {
-    enqueueReminderScan().catch((err) =>
-      console.error("[cron] enqueueReminderScan failed", err)
-    );
+    enqueueReminderScan()
+      .then(async (job) => {
+        // Fallback mode when Redis queue is disabled.
+        if (!job) {
+          await processReminderScanJob();
+        }
+      })
+      .catch((err) => console.error("[cron] reminder scan failed", err));
   });
 
   httpServer.listen(port, () => console.log(`Server listening on ${port}`));

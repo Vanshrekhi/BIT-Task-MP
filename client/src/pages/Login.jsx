@@ -7,7 +7,7 @@ import { Button, Loading, Textbox } from "../components";
 import { useLoginMutation } from "../redux/slices/api/authApiSlice";
 import { setCredentials } from "../redux/slices/authSlice";
 
-const ROLES = ["Principal", "HOD", "Faculty", "Student"];
+const ROLES = ["Admin", "Principal", "HOD", "Faculty", "Student"];
 const DEPARTMENTS = ["COMP", "IT", "ENTC", "MECH", "CIVIL", "OTHER"];
 
 const Login = () => {
@@ -37,7 +37,7 @@ const Login = () => {
       dispatch(setCredentials(userData));
 
       const role = userData?.role;
-      const isAdmin = userData?.isAdmin || role === "Principal";
+      const isAdmin = userData?.isAdmin || role === "Admin";
 
       if (isAdmin) {
         navigate("/admin-dashboard");
@@ -58,7 +58,7 @@ const Login = () => {
   useEffect(() => {
     if (user) {
       const role = user?.role;
-      const isAdmin = user?.isAdmin || role === "Principal";
+      const isAdmin = user?.isAdmin || role === "Admin";
 
       if (isAdmin) {
         navigate("/admin-dashboard");

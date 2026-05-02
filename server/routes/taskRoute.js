@@ -3,6 +3,7 @@ import {
   createSubTask,
   createTask,
   dashboardStatistics,
+  downloadTaskReportPdf,
   deleteRestoreTask,
   duplicateTask,
   getTask,
@@ -21,6 +22,7 @@ router.post("/duplicate/:id", protectRoute, canManageTasks, duplicateTask);
 router.post("/activity/:id", protectRoute, postTaskActivity);
 
 router.get("/dashboard", protectRoute, dashboardStatistics);
+router.get("/report/pdf", protectRoute, downloadTaskReportPdf);
 router.get("/", protectRoute, getTasks);
 router.get("/:id", protectRoute, getTask);
 

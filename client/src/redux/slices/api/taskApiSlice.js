@@ -96,6 +96,15 @@ export const postApiSlice = apiSlice.injectEndpoints({
         credentials: "include",
       }),
     }),
+
+    getReportPdf: builder.query({
+      query: (period = "all") => ({
+        url: `${TASKS_URL}/report/pdf?period=${period}`,
+        method: "GET",
+        credentials: "include",
+        responseHandler: async (response) => response.blob(),
+      }),
+    }),
   }),
 });
 
@@ -111,4 +120,5 @@ export const {
   useGetSingleTaskQuery,
   useGetDasboardStatsQuery,
   useChangeTaskStageMutation,
+  useLazyGetReportPdfQuery,
 } = postApiSlice;

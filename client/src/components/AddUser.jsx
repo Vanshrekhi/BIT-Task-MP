@@ -3,10 +3,20 @@ import React from "react";
 import { useForm } from "react-hook-form";
 import { useDispatch, useSelector } from "react-redux";
 import { toast } from "sonner";
-import { useRegisterMutation } from "../redux/slices/api/authApiSlice";
-import { useUpdateUserMutation } from "../redux/slices/api/userApiSlice";
+import { useUpdateUserMutation, useCreateManagedUserMutation } from "../redux/slices/api/userApiSlice";
 import { setCredentials } from "../redux/slices/authSlice";
 import { Button, Loading, ModalWrapper, Textbox } from "./";
+
+const ROLES_BY_CREATOR = {
+  Admin: ["Principal", "HOD"],
+  Principal: ["HOD"],
+  HOD: ["Faculty"],
+  Faculty: ["Student"],
+};
+
+const DEPARTMENTS = ["COMP", "IT", "ENTC", "MECH", "CIVIL", "OTHER"];
+const YEARS = ["FE", "SE", "TE", "BE"];
+const FACULTY_ROLES = ["Faculty", "Student Incharge", "Project Guide"];
 
 const AddUser = ({ open, setOpen, userData }) => {
   let defaultValues = userData ?? {};
@@ -20,7 +30,7 @@ const AddUser = ({ open, setOpen, userData }) => {
 
   const dispatch = useDispatch();
 
-  const [addNewUser, { isLoading }] = useRegisterMutation();
+  const [createManagedUser, { isLoading }] = useCreateManagedUserMutation();
   const [updateUser, { isLoading: isUpdating }] = useUpdateUserMutation();
 
   const handleOnSubmit = async (data) => {
@@ -32,11 +42,17 @@ const AddUser = ({ open, setOpen, userData }) => {
           dispatch(setCredentials({ ...res?.user }));
         }
       } else {
-        const res = await addNewUser({
+        const password = (data?.password || data?.email || data?.prn || "").trim();
+        if (!password) {
+          toast.error("Email or PRN is required to generate a password.");
+          return;
+        }
+
+        await createManagedUser({
           ...data,
-          password: data?.email,
+          password,
         }).unwrap();
-        toast.success("New User added successfully");
+        toast.success("User created successfully");
       }
 
       setTimeout(() => {
@@ -47,6 +63,11 @@ const AddUser = ({ open, setOpen, userData }) => {
       toast.error(err?.data?.message || err.error);
     }
   };
+
+  const creatorRole = user?.isAdmin ? "Admin" : user?.role;
+  const allowedRoles = userData
+    ? []
+    : ROLES_BY_CREATOR[String(creatorRole || "").trim()] || [];
 
   return (
     <>
@@ -70,40 +91,167 @@ const AddUser = ({ open, setOpen, userData }) => {
               })}
               error={errors.name ? errors.name.message : ""}
             />
+
+            {!userData && (
+              <div className='w-full flex flex-col gap-1'>
+                <span className='text-sm text-slate-900'>Role</span>
+                <select
+                  className='border border-gray-300 rounded px-2 py-2 text-sm outline-none focus:ring-2 ring-blue-300'
+                  {...register("role", { required: "User role is required!" })}
+                >
+                  <option value=''>Select</option>
+                  {allowedRoles.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                {errors.role && (
+                  <span className='text-xs text-[#f64949fe]'>{errors.role.message}</span>
+                )}
+                {allowedRoles.length === 0 && (
+                  <span className='text-xs text-gray-500'>
+                    Your role cannot create new users.
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* For updates, keep role editable like before */}
+            {userData && (
+              <Textbox
+                placeholder='Role'
+                type='text'
+                name='role'
+                label='Role'
+                className='w-full rounded'
+                register={register("role", {
+                  required: "User role is required!",
+                })}
+                error={errors.role ? errors.role.message : ""}
+              />
+            )}
+
+            {/* Email (required for Faculty/HOD/Principal; optional for Student) */}
             <Textbox
-              placeholder='Title'
-              type='text'
-              name='title'
-              label='Title'
-              className='w-full rounded'
-              register={register("title", {
-                required: "Title is required!",
-              })}
-              error={errors.title ? errors.title.message : ""}
-            />
-            <Textbox
-              placeholder='Email Address'
+              placeholder='Email Address (optional for Student)'
               type='email'
               name='email'
               label='Email Address'
               className='w-full rounded'
-              register={register("email", {
-                required: "Email Address is required!",
-              })}
+              register={register("email")}
               error={errors.email ? errors.email.message : ""}
             />
 
-            <Textbox
-              placeholder='Role'
-              type='text'
-              name='role'
-              label='Role'
-              className='w-full rounded'
-              register={register("role", {
-                required: "User role is required!",
-              })}
-              error={errors.role ? errors.role.message : ""}
-            />
+            {/* Department */}
+            {!userData && (
+              <div className='w-full flex flex-col gap-1'>
+                <span className='text-sm text-slate-900'>Department</span>
+                <select
+                  className='border border-gray-300 rounded px-2 py-2 text-sm outline-none focus:ring-2 ring-blue-300 disabled:bg-gray-50'
+                  {...register("department")}
+                  defaultValue={user?.department || ""}
+                  disabled={creatorRole === "HOD" || creatorRole === "Faculty"}
+                >
+                  <option value=''>Select</option>
+                  {DEPARTMENTS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Student fields */}
+            {!userData && creatorRole === "Faculty" && (
+              <>
+                <Textbox
+                  placeholder='PRN'
+                  type='text'
+                  name='prn'
+                  label='PRN'
+                  className='w-full rounded'
+                  register={register("prn", { required: "PRN is required!" })}
+                  error={errors.prn ? errors.prn.message : ""}
+                />
+
+                <div className='grid grid-cols-2 gap-2'>
+                  <div className='w-full flex flex-col gap-1'>
+                    <span className='text-sm text-slate-900'>Year</span>
+                    <select
+                      className='border border-gray-300 rounded px-2 py-2 text-sm outline-none focus:ring-2 ring-blue-300'
+                      {...register("year", { required: "Year is required!" })}
+                    >
+                      <option value=''>Select</option>
+                      {YEARS.map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.year && (
+                      <span className='text-xs text-[#f64949fe]'>{errors.year.message}</span>
+                    )}
+                  </div>
+
+                  <Textbox
+                    placeholder='Section'
+                    type='text'
+                    name='section'
+                    label='Section'
+                    className='w-full rounded'
+                    register={register("section")}
+                    error={errors.section ? errors.section.message : ""}
+                  />
+                </div>
+
+                <Textbox
+                  placeholder='Roll No'
+                  type='text'
+                  name='rollNo'
+                  label='Roll No'
+                  className='w-full rounded'
+                  register={register("rollNo", { required: "Roll No is required!" })}
+                  error={errors.rollNo ? errors.rollNo.message : ""}
+                />
+              </>
+            )}
+
+            {/* Faculty fields */}
+            {!userData && creatorRole === "HOD" && (
+              <>
+                <Textbox
+                  placeholder='Subjects / Skills (comma separated)'
+                  type='text'
+                  name='subjectsSkills'
+                  label='Subjects / Skills'
+                  className='w-full rounded'
+                  register={register("subjectsSkills", {
+                    required: "Subjects / Skills is required!",
+                  })}
+                  error={errors.subjectsSkills ? errors.subjectsSkills.message : ""}
+                />
+
+                <div className='w-full flex flex-col gap-1'>
+                  <span className='text-sm text-slate-900'>Faculty Role</span>
+                  <select
+                    className='border border-gray-300 rounded px-2 py-2 text-sm outline-none focus:ring-2 ring-blue-300'
+                    {...register("facultyRole", { required: "Faculty role is required!" })}
+                  >
+                    <option value=''>Select</option>
+                    {FACULTY_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.facultyRole && (
+                    <span className='text-xs text-[#f64949fe]'>{errors.facultyRole.message}</span>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {isLoading || isUpdating ? (

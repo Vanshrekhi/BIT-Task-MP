@@ -1,9 +1,11 @@
 import ChatRoom from "../models/chatRoomModel.js";
 
 /**
- * Socket.IO chat — room keys, join approval, persisted messages, session end.
+ * Socket.IO chat — room keys, host approvals, in-memory messages, session end.
  * Legacy events: chat:* — also exposes join-room / send-message / leave-room aliases.
  */
+const sessionMessages = new Map();
+
 export function registerChatHandlers(io) {
   io.on("connection", (socket) => {
     const currentUserId = String(socket.user._id);
@@ -14,7 +16,7 @@ export function registerChatHandlers(io) {
     };
 
     const handleJoinRoom = async ({ key }) => {
-      const room = await ChatRoom.findOne({ key }).populate("messages.sender", "name");
+      const room = await ChatRoom.findOne({ key });
       if (!room || !room.isActive) {
         return socket.emit("chat:error", "Room not found or already ended.");
       }
@@ -29,8 +31,9 @@ export function registerChatHandlers(io) {
       }
 
       socket.join(`room:${key}`);
-      socket.emit("chat:history", { key, messages: room.messages });
-      socket.emit("receive-message", { type: "history", key, messages: room.messages });
+      const history = sessionMessages.get(key) || [];
+      socket.emit("chat:history", { key, messages: history });
+      socket.emit("receive-message", { type: "history", key, messages: history });
     };
 
     const handleSendMessage = async ({ key, text }) => {
@@ -46,20 +49,20 @@ export function registerChatHandlers(io) {
       if (!isHost && !isAccepted) return;
 
       const message = {
-        sender: socket.user._id,
+        sender: {
+          _id: socket.user._id,
+          name: socket.user.name,
+          role: socket.user.role,
+        },
         text: text.trim(),
         sentAt: new Date(),
       };
 
-      room.messages.push(message);
-      await room.save();
+      const roomMessages = sessionMessages.get(key) || [];
+      roomMessages.push(message);
+      sessionMessages.set(key, roomMessages);
 
-      const payload = {
-        ...message,
-        sender: { _id: socket.user._id, name: socket.user.name },
-      };
-
-      const out = { key, message: payload };
+      const out = { key, message };
       emitToRoom(key, "chat:new-message", out);
       emitToRoom(key, "receive-message", { ...out, type: "message" });
     };
@@ -77,12 +80,17 @@ export function registerChatHandlers(io) {
 
       const member = room.teamMembers.find((m) => String(m.user) === currentUserId);
       if (!member) {
-        room.teamMembers.push({ user: currentUserId, status: "pending" });
-        await room.save();
-      } else if (member.status === "accepted") {
+        return socket.emit(
+          "chat:error",
+          "You are not invited to this room. Ask host to add you first."
+        );
+      }
+
+      if (member.status === "accepted") {
         socket.join(`room:${key}`);
         return socket.emit("chat:join-approved", { key });
-      } else if (member.status === "rejected") {
+      }
+      if (member.status === "rejected") {
         return socket.emit("chat:join-rejected", { key });
       }
 
@@ -121,10 +129,10 @@ export function registerChatHandlers(io) {
       const room = await ChatRoom.findOne({ key });
       if (!room || String(room.host) !== currentUserId) return;
 
-      room.messages = [];
       room.isActive = false;
       room.endedAt = new Date();
       await room.save();
+      sessionMessages.delete(key);
 
       emitToRoom(key, "chat:session-ended", { key });
       emitToRoom(key, "receive-message", { type: "session-ended", key });

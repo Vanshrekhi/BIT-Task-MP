@@ -3,6 +3,15 @@ import { apiSlice } from "../apiSlice";
 
 export const userApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
+    createManagedUser: builder.mutation({
+      query: (data) => ({
+        url: `${USERS_URL}/create`,
+        method: "POST",
+        body: data,
+        credentials: "include",
+      }),
+    }),
+
     updateUser: builder.mutation({
       query: (data) => ({
         url: `${USERS_URL}/profile`,
@@ -19,6 +28,7 @@ export const userApiSlice = apiSlice.injectEndpoints({
         department = "",
         year = "",
         section = "",
+        role = "",
       } = {}) => {
         const q = new URLSearchParams();
         q.set("search", search);
@@ -26,6 +36,7 @@ export const userApiSlice = apiSlice.injectEndpoints({
         q.set("department", department);
         q.set("year", year);
         q.set("section", section);
+        q.set("role", role);
         return {
           url: `${USERS_URL}/users?${q.toString()}`,
           method: "GET",
@@ -104,6 +115,7 @@ export const userApiSlice = apiSlice.injectEndpoints({
 });
 
 export const {
+  useCreateManagedUserMutation,
   useUpdateUserMutation,
   useGetTeamListsQuery,
   useDeleteUserMutation,

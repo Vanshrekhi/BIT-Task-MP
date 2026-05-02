@@ -71,10 +71,10 @@ export const DEPARTMENTS = ["COMP", "IT", "ENTC", "MECH", "CIVIL", "OTHER"];
 
 export const YEARS = ["FE", "SE", "TE", "BE"];
 
-/** Principal (admin), HOD, or Faculty — not Student */
+/** Admin, Principal, HOD, or Faculty — not Student */
 export function canManageTasks(user) {
   if (!user) return false;
   const r = user.role ? String(user.role).trim() : "";
-  if (user.isAdmin || r === "Principal") return true;
+  if (user.isAdmin || r === "Admin" || r === "Principal") return true;
   return r === "HOD" || r === "Faculty";
 }

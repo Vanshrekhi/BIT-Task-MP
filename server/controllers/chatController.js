@@ -101,4 +101,61 @@ const endRoomSession = asyncHandler(async (req, res) => {
   });
 });
 
-export { createRoom, endRoomSession, getMyRooms, getRoomByKey };
+const addRoomMembers = asyncHandler(async (req, res) => {
+  const { userId } = req.user;
+  const { key } = req.params;
+  const { invitedMembers = [] } = req.body;
+
+  const room = await ChatRoom.findOne({ key });
+  if (!room) {
+    return res.status(404).json({ status: false, message: "Chat room not found." });
+  }
+
+  if (!room.isActive) {
+    return res
+      .status(400)
+      .json({ status: false, message: "Chat room is already closed." });
+  }
+
+  if (String(room.host) !== String(userId)) {
+    return res.status(403).json({
+      status: false,
+      message: "Only room host can add members.",
+    });
+  }
+
+  const memberSet = new Set(
+    room.teamMembers.map((member) => String(member.user))
+  );
+  const uniqueMembers = [...new Set(invitedMembers.map(String))]
+    .filter((id) => id !== String(userId))
+    .filter((id) => !memberSet.has(id));
+
+  if (uniqueMembers.length === 0) {
+    return res.status(200).json({
+      status: true,
+      message: "No new members were added.",
+      room: sanitizeRoom(room),
+    });
+  }
+
+  room.teamMembers.push(
+    ...uniqueMembers.map((id) => ({
+      user: id,
+      status: "pending",
+    }))
+  );
+  await room.save();
+
+  const populated = await ChatRoom.findById(room._id)
+    .populate("host", "name email")
+    .populate("teamMembers.user", "name email title role");
+
+  return res.status(200).json({
+    status: true,
+    message: "Members added. They can now request to join.",
+    room: sanitizeRoom(populated),
+  });
+});
+
+export { addRoomMembers, createRoom, endRoomSession, getMyRooms, getRoomByKey };

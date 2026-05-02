@@ -5,6 +5,7 @@ import {
   MdOutlineAddTask,
   MdOutlinePendingActions,
   MdSettings,
+  MdSchool,
   MdTaskAlt,
 } from "react-icons/md";
 import { useDispatch, useSelector } from "react-redux";
@@ -17,18 +18,18 @@ const adminLinks = [
   { label: "All Tasks", link: "tasks", icon: <FaTasks /> },
   { label: "Completed", link: "completed/completed", icon: <MdTaskAlt /> },
   { label: "In Progress", link: "in-progress/in progress", icon: <MdOutlinePendingActions /> },
-  { label: "To Do", link: "todo/todo", icon: <MdOutlinePendingActions /> },
+  { label: "Assigned", link: "todo/todo", icon: <MdOutlinePendingActions /> },
   { label: "Team", link: "team", icon: <FaUsers /> },
   { label: "Trash", link: "trashed", icon: <FaTrashAlt /> },
 ];
 
-// Employee ke liye sirf apne kaam ke links
+// Employee ke liye default links
 const employeeLinks = [
   { label: "My Dashboard", link: "dashboard", icon: <MdDashboard /> },
   { label: "My Tasks", link: "tasks", icon: <FaTasks /> },
   { label: "Completed", link: "completed/completed", icon: <MdTaskAlt /> },
   { label: "In Progress", link: "in-progress/in progress", icon: <MdOutlinePendingActions /> },
-  { label: "To Do", link: "todo/todo", icon: <MdOutlinePendingActions /> },
+  { label: "Assigned", link: "todo/todo", icon: <MdOutlinePendingActions /> },
 ];
 
 const Sidebar = () => {
@@ -37,7 +38,29 @@ const Sidebar = () => {
   const location = useLocation();
   const path = location.pathname.split("/")[1];
 
-  const sidebarLinks = user?.isAdmin ? adminLinks : employeeLinks;
+  const isAdminUser = user?.isAdmin || user?.role === "Admin";
+  const role = user?.role;
+  const roleLabel = isAdminUser ? "Admin" : role || "Member";
+
+  const canSeeTeam = isAdminUser || role === "Principal" || role === "HOD" || role === "Faculty";
+  const shouldHideAssigned = role === "Principal";
+
+  const baseLinks = isAdminUser ? adminLinks : employeeLinks;
+  const withoutAssigned = shouldHideAssigned
+    ? baseLinks.filter((l) => l.link !== "todo/todo")
+    : baseLinks;
+
+  let sidebarLinks = canSeeTeam
+    ? withoutAssigned.some((l) => l.link === "team")
+      ? withoutAssigned
+      : [...withoutAssigned, { label: "Team", link: "team", icon: <FaUsers /> }]
+    : withoutAssigned;
+
+  if (role === "HOD" || role === "Faculty") {
+    sidebarLinks = sidebarLinks.some((l) => l.link === "students")
+      ? sidebarLinks
+      : [...sidebarLinks, { label: "Students", link: "students", icon: <MdSchool /> }];
+  }
 
   const closeSidebar = () => {
     dispatch(setOpenSidebar(false));
@@ -70,11 +93,11 @@ const Sidebar = () => {
       {/* Role Badge */}
       <div className={clsx(
         "px-3 py-1 rounded-full text-xs font-semibold w-fit",
-        user?.isAdmin
+        isAdminUser
           ? "bg-blue-100 text-blue-700"
           : "bg-violet-100 text-violet-700"
       )}>
-        {user?.isAdmin ? "👑 Admin" : "👤 Employee"}
+        {isAdminUser ? "👑 Admin" : `👤 ${roleLabel}`}
       </div>
 
       {/* Nav Links */}
@@ -86,10 +109,10 @@ const Sidebar = () => {
 
       {/* Settings */}
       <div>
-        <button className="w-full flex gap-2 p-2 items-center text-lg text-gray-800 dark:text-white">
+        <Link to='settings' className="w-full flex gap-2 p-2 items-center text-lg text-gray-800 dark:text-white">
           <MdSettings />
           <span>Settings</span>
-        </button>
+        </Link>
       </div>
     </div>
   );

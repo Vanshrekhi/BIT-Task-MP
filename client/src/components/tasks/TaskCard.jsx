@@ -7,6 +7,8 @@ import {
   MdKeyboardDoubleArrowUp,
 } from "react-icons/md";
 import { useSelector } from "react-redux";
+import { toast } from "sonner";
+import { useChangeTaskStageMutation } from "../../redux/slices/api/taskApiSlice";
 import {
   BGS,
   PRIOTITYSTYELS,
@@ -23,10 +25,34 @@ const ICONS = {
   low: <MdKeyboardArrowDown />,
 };
 
+const STAGE_OPTIONS = [
+  { label: "Assigned", value: "todo" },
+  { label: "In Progress", value: "in progress" },
+  { label: "Completed", value: "completed" },
+];
+
 const TaskCard = ({ task }) => {
   const { user } = useSelector((state) => state.auth);
   const manage = canManageTasks(user);
+  const [changeStage, { isLoading: changingStage }] = useChangeTaskStageMutation();
   const [open, setOpen] = useState(false);
+  const isAssignedToMe = (task?.team || []).some(
+    (member) => String(member?._id) === String(user?._id)
+  );
+  const canUpdateStage = manage || isAssignedToMe;
+
+  const handleUpdateStage = async (stage) => {
+    try {
+      const res = await changeStage({
+        id: task?._id,
+        stage,
+      }).unwrap();
+      toast.success(res?.message || "Task stage updated.");
+      setTimeout(() => window.location.reload(), 400);
+    } catch (err) {
+      toast.error(err?.data?.message || err?.error || "Unable to update task.");
+    }
+  };
 
   return (
     <>
@@ -45,7 +71,21 @@ const TaskCard = ({ task }) => {
           {/* {user.isAdmin && <TaskDialog task={task} />} */}
         </div>
         <>
-          <div className='flex items-center gap-2'>
+          <div className='flex flex-wrap items-center gap-3'>
+            {STAGE_OPTIONS.map((opt) => (
+              <label key={opt.value} className='text-xs flex items-center gap-1 text-gray-700 dark:text-gray-300'>
+                <input
+                  type='checkbox'
+                  checked={task?.stage === opt.value}
+                  disabled={!canUpdateStage || changingStage}
+                  onChange={() => handleUpdateStage(opt.value)}
+                />
+                <span>{opt.label}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className='flex items-center gap-2 mt-2'>
             <TaskColor className={TASK_TYPE[task.stage]} />
             <h4 className='text- line-clamp-1 text-black dark:text-white'>
               {task?.title}
@@ -105,14 +145,16 @@ const TaskCard = ({ task }) => {
         )}
 
         <div className='w-full pb-2'>
-          <button
-            disabled={!manage}
-            onClick={() => setOpen(true)}
-            className='w-full flex gap-4 items-center text-sm text-gray-500 font-semibold disabled:cursor-not-allowed disabled:text-gray-300'
-          >
-            <IoMdAdd className='text-lg' />
-            <span>ADD SUBTASK</span>
-          </button>
+          <div className='flex items-center gap-2'>
+            <button
+              disabled={!manage}
+              onClick={() => setOpen(true)}
+              className='flex-1 flex gap-4 items-center text-sm text-gray-500 font-semibold disabled:cursor-not-allowed disabled:text-gray-300'
+            >
+              <IoMdAdd className='text-lg' />
+              <span>ADD SUBTASK</span>
+            </button>
+          </div>
         </div>
       </div>
 

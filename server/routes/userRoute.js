@@ -1,6 +1,7 @@
 import express from "express";
 import {
   activateUserProfile,
+  createManagedUser,
   approveUser,
   changeUserPassword,
   deleteUserProfile,
@@ -21,6 +22,9 @@ const router = express.Router();
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.post("/logout", logoutUser);
+
+// Create users via hierarchy (Admin->Principal/HOD, Principal->HOD, HOD->Faculty, Faculty->Student)
+router.post("/create", protectRoute, createManagedUser);
 
 router.get("/pending-requests", protectRoute, getPendingRequests);
 router.put("/approve/:id", protectRoute, approveUser);

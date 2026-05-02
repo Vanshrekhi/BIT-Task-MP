@@ -113,7 +113,7 @@ export async function enqueueAssignmentEmail({ taskId, triggeredByUserId }) {
   return getReminderQueue().add(
     "send-assignment-email",
     { taskId, triggeredByUserId },
-    { jobId: `assignment:${taskId}:${Date.now()}` }
+    { jobId: `assignment-${taskId}-${Date.now()}` }
   );
 }
 
@@ -121,6 +121,6 @@ export async function enqueueReminderScan() {
   const ok = await canUseRedis();
   if (!ok) return null;
 
-  return getReminderQueue().add("scan-reminders", {}, { jobId: `scan:${Date.now()}` });
+  return getReminderQueue().add("scan-reminders", {}, { jobId: `scan-${Date.now()}` });
 }
 

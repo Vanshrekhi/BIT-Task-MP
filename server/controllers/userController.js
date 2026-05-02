@@ -3,6 +3,7 @@ import User from "../models/userModel.js";
 import createJWT from "../utils/index.js";
 import Notice from "../models/notis.js";
 import { isEmailConfigured, sendEmail } from "../services/emailService.js";
+import { canAssignToTargetRank, getRoleRank } from "../utils/roleHierarchy.js";
 
 const isEmailLike = (value = "") => {
   const v = String(value).trim();
@@ -10,8 +11,12 @@ const isEmailLike = (value = "") => {
 };
 
 const normalizeRole = (r) => (r ? String(r).trim() : "");
-const normalizeDept = (d) => (d ? String(d).trim() : "");
-
+const normalizeDept = (d) => (d ? String(d).trim().toUpperCase() : "");
+const escapeRegex = (value = "") => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const deptCaseInsensitiveMatch = (dept = "") => ({
+  $regex: `^${escapeRegex(String(dept).trim())}$`,
+  $options: "i",
+});
 const canApproveTarget = ({ approver, target }) => {
   const approverRole = normalizeRole(approver?.role);
   const targetRole = normalizeRole(target?.role);
@@ -19,14 +24,27 @@ const canApproveTarget = ({ approver, target }) => {
   const targetDept = normalizeDept(target?.department);
 
   // Approval sequence:
-  // - HOD requests -> Principal (any department)
-  // - Faculty/Student requests -> HOD of the same department
-  if (approver?.isAdmin || approverRole === "Principal") return targetRole === "HOD";
+  // - Principal/HOD requests -> Admin
+  // - Faculty requests -> HOD of the same department
+  // - Student requests -> Faculty of the same department
+  if (approver?.isAdmin || approverRole === "Admin") {
+    return targetRole === "Principal" || targetRole === "HOD";
+  }
+
+  if (approverRole === "Principal") {
+    return false;
+  }
 
   if (approverRole === "HOD") {
     if (!approverDept || !targetDept) return false;
     if (approverDept !== targetDept) return false;
-    return targetRole === "Faculty" || targetRole === "Student";
+    return targetRole === "Faculty";
+  }
+
+  if (approverRole === "Faculty") {
+    if (!approverDept || !targetDept) return false;
+    if (approverDept !== targetDept) return false;
+    return targetRole === "Student";
   }
 
   return false;
@@ -36,8 +54,12 @@ const getVisiblePendingQuery = (approver) => {
   const approverRole = normalizeRole(approver?.role);
   const approverDept = normalizeDept(approver?.department);
 
-  if (approver?.isAdmin || approverRole === "Principal") {
-    return { status: "pending", role: "HOD", isActive: true };
+  if (approver?.isAdmin || approverRole === "Admin") {
+    return { status: "pending", role: { $in: ["Principal", "HOD"] }, isActive: true };
+  }
+
+  if (approverRole === "Principal") {
+    return { status: "pending", _id: null };
   }
 
   if (approverRole === "HOD") {
@@ -47,8 +69,20 @@ const getVisiblePendingQuery = (approver) => {
     }
     return {
       status: "pending",
-      role: { $in: ["Faculty", "Student"] },
-      department: approverDept,
+      role: "Faculty",
+      department: deptCaseInsensitiveMatch(approverDept),
+      isActive: true,
+    };
+  }
+
+  if (approverRole === "Faculty") {
+    if (!approverDept) {
+      return { status: "pending", _id: null };
+    }
+    return {
+      status: "pending",
+      role: "Student",
+      department: deptCaseInsensitiveMatch(approverDept),
       isActive: true,
     };
   }
@@ -170,7 +204,7 @@ const registerUser = asyncHandler(async (req, res) => {
     return res.status(400).json({ status: false, message: "Role is required." });
   }
 
-  if (requestedRole === "Principal") {
+  if (requestedRole === "Admin") {
     if (!process.env.ADMIN_SECRET_KEY) {
       return res.status(500).json({
         status: false,
@@ -193,7 +227,7 @@ const registerUser = asyncHandler(async (req, res) => {
     return res.status(400).json({ status: false, message: "PRN is required." });
   }
 
-  if (requestedRole !== "Principal" && !requestedDept) {
+  if (!["Principal", "Admin"].includes(requestedRole) && !requestedDept) {
     return res
       .status(400)
       .json({ status: false, message: "Department is required." });
@@ -215,7 +249,7 @@ const registerUser = asyncHandler(async (req, res) => {
     }
   }
 
-  const isAdmin = requestedRole === "Principal";
+  const isAdmin = requestedRole === "Admin";
   const status = isAdmin ? "approved" : "pending";
 
   const user = await User.create({
@@ -248,7 +282,44 @@ const registerUser = asyncHandler(async (req, res) => {
     return res.status(400).json({ status: false, message: "Invalid user data" });
   }
 
-  // Only auto-login principals; everyone else must wait for approval.
+  if (status === "pending") {
+    let approvers = [];
+    if (requestedRole === "Faculty") {
+      approvers = await User.find({
+        role: "HOD",
+        department: deptCaseInsensitiveMatch(requestedDept),
+        isActive: true,
+        status: "approved",
+      });
+    } else if (requestedRole === "Student") {
+      approvers = await User.find({
+        role: "Faculty",
+        department: deptCaseInsensitiveMatch(requestedDept),
+        isActive: true,
+        status: "approved",
+      });
+    } else if (requestedRole === "HOD" || requestedRole === "Principal") {
+      approvers = await User.find({
+        $or: [{ role: "Admin" }, { isAdmin: true }],
+        isActive: true,
+        status: "approved",
+      });
+    }
+
+    if (approvers.length > 0) {
+      const team = approvers.map((a) => a._id);
+      const identifier = emailValue || prnValue || "User";
+      const text = `New ${requestedRole} registration requires your approval: ${name} (${identifier})`;
+      
+      await Notice.create({
+        team,
+        text,
+        notiType: "alert",
+      });
+    }
+  }
+
+  // Only auto-login admins; everyone else must wait for approval.
   if (isAdmin) {
     createJWT(res, user._id);
   }
@@ -330,8 +401,9 @@ const logoutUser = (req, res) => {
  * - scope=chat: all approved users (for chat invites)
  */
 const getTeamList = asyncHandler(async (req, res) => {
-  const { search, scope, department, year, section } = req.query;
+  const { search, scope, department, year, section, role } = req.query;
   const forChat = scope === "chat";
+  const requestedRole = normalizeRole(role);
 
   const requester = await User.findById(req.user.userId).select(
     "name title role email prn department year section isAdmin status"
@@ -344,42 +416,77 @@ const getTeamList = asyncHandler(async (req, res) => {
   const requesterDept = normalizeDept(requester.department);
 
   if (!forChat && requesterRole === "Student") {
-    const self = await User.findById(req.user.userId).select(
-      "name title role email prn department year section rollNo facultyRole isActive"
-    );
-    return res.status(200).json(self ? [self] : []);
+    return res.status(200).json([]);
   }
 
-  let query = {
+  const baseQuery = {
     status: "approved",
     isActive: true,
   };
+  let visibilityQuery = {};
 
   if (forChat) {
     // Everyone approved — chat room invites
   } else if (requester.isAdmin || requesterRole === "Principal") {
     // All members; optional department/year/section filters from UI
-    if (department) query.department = normalizeDept(department);
-    if (year) query.year = String(year).trim();
-    if (section) query.section = String(section).trim();
+    if (department) visibilityQuery.department = deptCaseInsensitiveMatch(normalizeDept(department));
+    if (year) visibilityQuery.year = String(year).trim();
+    if (section) visibilityQuery.section = String(section).trim();
   } else if (requesterRole === "HOD") {
     if (!requesterDept) {
       return res.status(200).json([]);
     }
-    query.department = requesterDept;
-    query.role = { $in: ["Faculty", "Student"] };
-    if (year) query.year = String(year).trim();
-    if (section) query.section = String(section).trim();
+    if (requestedRole === "Student") {
+      visibilityQuery = {
+        department: deptCaseInsensitiveMatch(requesterDept),
+        role: "Student",
+        ...(year ? { year: String(year).trim() } : {}),
+        ...(section ? { section: String(section).trim() } : {}),
+      };
+    } else {
+    visibilityQuery = {
+      $or: [
+        { role: { $in: ["Admin", "Principal"] } },
+        {
+          department: deptCaseInsensitiveMatch(requesterDept),
+          role: { $in: ["HOD", "Faculty", "Student"] },
+          ...(year ? { year: String(year).trim() } : {}),
+          ...(section ? { section: String(section).trim() } : {}),
+        },
+      ],
+    };
+    }
   } else if (requesterRole === "Faculty") {
     if (!requesterDept) {
       return res.status(200).json([]);
     }
-    query.department = requesterDept;
-    query.role = "Student";
-    if (year) query.year = String(year).trim();
-    if (section) query.section = String(section).trim();
+    if (requestedRole === "Student") {
+      visibilityQuery = {
+        department: deptCaseInsensitiveMatch(requesterDept),
+        role: "Student",
+        ...(year ? { year: String(year).trim() } : {}),
+        ...(section ? { section: String(section).trim() } : {}),
+      };
+    } else {
+      visibilityQuery = {
+        $or: [
+          { role: { $in: ["Admin", "Principal"] } },
+          {
+            department: deptCaseInsensitiveMatch(requesterDept),
+            role: { $in: ["HOD", "Faculty", "Student"] },
+            ...(year ? { year: String(year).trim() } : {}),
+            ...(section ? { section: String(section).trim() } : {}),
+          },
+        ],
+      };
+    }
   } else {
     return res.status(200).json([]);
+  }
+
+  const query = { ...baseQuery, ...visibilityQuery };
+  if (requestedRole) {
+    query.role = requestedRole;
   }
 
   if (search) {
@@ -630,8 +737,157 @@ const rejectUser = asyncHandler(async (req, res) => {
   return res.status(200).json({ status: true, message: "Rejected successfully." });
 });
 
+/**
+ * POST - Create a user directly via hierarchy (no "pending request" flow).
+ * Admin -> Principal/HOD
+ * Principal -> HOD
+ * HOD -> Faculty (same department)
+ * Faculty -> Student (same department)
+ */
+const createManagedUser = asyncHandler(async (req, res) => {
+  const creator = req.user;
+  const creatorRank = getRoleRank(creator);
+
+  const {
+    name,
+    email,
+    password,
+    role,
+    department,
+    year,
+    section,
+    rollNo,
+    prn,
+    facultyRole,
+    subjectsSkills,
+  } = req.body;
+
+  const requestedRole = normalizeRole(role);
+  if (!requestedRole) {
+    return res.status(400).json({ status: false, message: "Role is required." });
+  }
+
+  if (!canAssignToTargetRank(creatorRank, requestedRole)) {
+    return res.status(403).json({
+      status: false,
+      message:
+        "Not authorized to create this role. Allowed chain: Admin->(Principal/HOD), Principal->HOD, HOD->Faculty, Faculty->Student.",
+    });
+  }
+
+  const creatorRole = normalizeRole(creator?.role);
+  const creatorDept = normalizeDept(creator?.department);
+
+  // Enforce department rules for HOD/Faculty creators (same-dept only).
+  let requestedDept = normalizeDept(department);
+  if (creatorRole === "HOD" || creatorRole === "Faculty") {
+    if (!creatorDept) {
+      return res.status(400).json({
+        status: false,
+        message: "Your account has no department set. Contact admin.",
+      });
+    }
+    requestedDept = creatorDept;
+  }
+
+  const emailValue = email ? String(email).trim().toLowerCase() : "";
+  const prnValue = prn ? String(prn).trim() : "";
+
+  if (!String(name || "").trim()) {
+    return res.status(400).json({ status: false, message: "Name is required." });
+  }
+
+  if (requestedRole !== "Student" && !emailValue) {
+    return res.status(400).json({ status: false, message: "Email is required." });
+  }
+
+  if (requestedRole === "Student" && !prnValue) {
+    return res.status(400).json({ status: false, message: "PRN is required." });
+  }
+
+  if (!["Principal", "Admin"].includes(requestedRole) && !requestedDept) {
+    return res.status(400).json({ status: false, message: "Department is required." });
+  }
+
+  const pwd = String(password || "").trim() || emailValue || prnValue;
+  if (!pwd) {
+    return res.status(400).json({ status: false, message: "Password is required." });
+  }
+
+  if (emailValue) {
+    const userExists = await User.findOne({ email: emailValue });
+    if (userExists) {
+      return res.status(400).json({ status: false, message: "Email address already exists" });
+    }
+  }
+
+  if (prnValue) {
+    const prnExists = await User.findOne({ prn: prnValue });
+    if (prnExists) {
+      return res.status(400).json({ status: false, message: "PRN already exists" });
+    }
+  }
+
+  const isAdmin = requestedRole === "Admin";
+
+  const user = await User.create({
+    name: String(name).trim(),
+    email: emailValue || undefined,
+    prn: prnValue || undefined,
+    password: pwd,
+    isAdmin,
+    role: requestedRole,
+    title: requestedRole,
+    department: requestedDept,
+    year: year ? String(year).trim() : "",
+    section: section ? String(section).trim() : "",
+    rollNo: rollNo ? String(rollNo).trim() : "",
+    facultyRole: facultyRole ? String(facultyRole).trim() : "",
+    subjectsSkills: Array.isArray(subjectsSkills)
+      ? subjectsSkills.map((s) => String(s).trim()).filter(Boolean)
+      : typeof subjectsSkills === "string"
+        ? subjectsSkills
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [],
+    status: "approved",
+    approvedBy: creator?.userId || null,
+    approvedAt: new Date(),
+  });
+
+  if (!user) {
+    return res.status(400).json({ status: false, message: "Invalid user data" });
+  }
+
+  user.password = undefined;
+
+  return res.status(201).json({
+    status: true,
+    message: "User created successfully.",
+    user: {
+      _id: user._id,
+      name: user.name,
+      isAdmin: user.isAdmin,
+      email: user.email,
+      prn: user.prn,
+      role: user.role,
+      title: user.title,
+      department: user.department,
+      year: user.year,
+      section: user.section,
+      rollNo: user.rollNo,
+      facultyRole: user.facultyRole,
+      status: user.status,
+      approvedBy: user.approvedBy,
+      isActive: user.isActive,
+    },
+  });
+});
+
 export {
   activateUserProfile,
+  createManagedUser,
   changeUserPassword,
   deleteUserProfile,
   getTeamList,

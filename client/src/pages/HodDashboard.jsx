@@ -4,7 +4,7 @@ import PendingApprovalsPanel from "../components/PendingApprovalsPanel";
 const HodDashboard = () => {
   return (
     <div className='flex flex-col gap-3'>
-      <PendingApprovalsPanel title='Faculty & Student approval requests' />
+      <PendingApprovalsPanel title='Faculty approval requests' />
       <Dashboard />
     </div>
   );

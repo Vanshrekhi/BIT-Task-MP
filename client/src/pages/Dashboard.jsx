@@ -6,7 +6,7 @@ const Dashboard = () => {
   const { user } = useSelector((state) => state.auth);
 
   // Admin ko Admin Dashboard, Employee ko Employee Dashboard
-  return user?.isAdmin ? <AdminDashboard /> : <EmployeeDashboard />;
+  return user?.isAdmin || user?.role === "Admin" ? <AdminDashboard /> : <EmployeeDashboard />;
 };
 
 export default Dashboard;

@@ -7,7 +7,10 @@ import {
   MdKeyboardDoubleArrowUp,
 } from "react-icons/md";
 import { toast } from "sonner";
-import { useTrashTastMutation } from "../redux/slices/api/taskApiSlice.js";
+import {
+  useChangeTaskStageMutation,
+  useTrashTastMutation,
+} from "../redux/slices/api/taskApiSlice.js";
 import { BGS, PRIOTITYSTYELS, TASK_TYPE, canManageTasks, formatDate } from "../utils/index.js";
 // import Button from "./Button.jsx";
 // import ConfirmatioDialog from "./ConfirmationDialog.jsx";
@@ -23,6 +26,12 @@ const ICONS = {
   low: <MdKeyboardArrowDown />,
 };
 
+const STAGE_OPTIONS = [
+  { label: "Assigned", value: "todo" },
+  { label: "In Progress", value: "in progress" },
+  { label: "Completed", value: "completed" },
+];
+
 const Table = ({ tasks }) => {
   const { user } = useSelector((state) => state.auth);
   const manage = canManageTasks(user);
@@ -31,6 +40,7 @@ const Table = ({ tasks }) => {
   const [openEdit, setOpenEdit] = useState(false);
 
   const [deleteTask] = useTrashTastMutation();
+  const [changeStage, { isLoading: changingStage }] = useChangeTaskStageMutation();
 
   const deleteClicks = (id) => {
     setSelected(id);
@@ -61,11 +71,22 @@ const Table = ({ tasks }) => {
     }
   };
 
+  const updateTaskStageHandler = async (id, stage) => {
+    try {
+      const res = await changeStage({ id, stage }).unwrap();
+      toast.success(res?.message || "Task stage updated.");
+      setTimeout(() => window.location.reload(), 400);
+    } catch (err) {
+      toast.error(err?.data?.message || err?.error || "Unable to update task.");
+    }
+  };
+
   const TableHeader = () => (
     <thead className='w-full border-b border-gray-300 dark:border-gray-600'>
       <tr className='w-full text-black dark:text-white  text-left'>
         <th className='py-2'>Task Title</th>
         <th className='py-2'>Priority</th>
+        <th className='py-2'>Current Status</th>
         <th className='py-2 line-clamp-1'>Created At</th>
         <th className='py-2'>Assets</th>
         <th className='py-2'>Team</th>
@@ -92,6 +113,25 @@ const Table = ({ tasks }) => {
           <span className='capitalize line-clamp-1'>
             {task?.priority} Priority
           </span>
+        </div>
+      </td>
+
+      <td className='py-2'>
+        <div className='flex flex-col gap-1'>
+          {STAGE_OPTIONS.map((opt) => (
+            <label key={opt.value} className='text-xs flex items-center gap-1'>
+              <input
+                type='checkbox'
+                checked={task?.stage === opt.value}
+                disabled={
+                  changingStage ||
+                  !(manage || (task?.team || []).some((m) => String(m?._id) === String(user?._id)))
+                }
+                onChange={() => updateTaskStageHandler(task?._id, opt.value)}
+              />
+              <span>{opt.label}</span>
+            </label>
+          ))}
         </div>
       </td>
 
@@ -126,12 +166,13 @@ const Table = ({ tasks }) => {
       </td>
 
       <td className='py-2 flex gap-2 md:gap-4 justify-end'>
-        {manage ? (
+        {manage || (task?.team || []).some((m) => String(m?._id) === String(user?._id)) ? (
           <>
             <Button
               className='text-blue-600 hover:text-blue-500 sm:px-0 text-sm md:text-base'
               label='Edit'
               type='button'
+              disabled={!manage}
               onClick={() => editClickHandler(task)}
             />
 
@@ -139,6 +180,7 @@ const Table = ({ tasks }) => {
               className='text-red-700 hover:text-red-500 sm:px-0 text-sm md:text-base'
               label='Delete'
               type='button'
+              disabled={!manage}
               onClick={() => deleteClicks(task._id)}
             />
           </>

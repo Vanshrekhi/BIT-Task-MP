@@ -15,6 +15,8 @@ import {
   ChatRoom,
   Login,
   StudentDashboard,
+  Students,
+  Settings,
   TaskDetail,
   Tasks,
   Trash,
@@ -55,7 +57,7 @@ function Layout() {
 const RootRedirect = () => {
   const { user } = useSelector((state) => state.auth);
   const role = user?.role;
-  const isAdmin = user?.isAdmin || role === "Principal";
+  const isAdmin = user?.isAdmin || role === "Admin";
   return user ? (
     <Navigate
       to={
@@ -126,7 +128,7 @@ const MobileSidebar = () => {
 };
 
 const App = () => {
-  const theme = "light";
+  const theme = useSelector((state) => state.ui?.theme || "light");
 
   return (
     <main className={theme}>
@@ -147,7 +149,9 @@ const App = () => {
             <Route path='/trashed' element={<Trash />} />
             <Route path='/task/:id' element={<TaskDetail />} />
             <Route path='/team' element={<Users />} />
+            <Route path='/students' element={<Students />} />
             <Route path='/chat' element={<ChatRoom />} />
+            <Route path='/settings' element={<Settings />} />
           </Route>
 
           <Route path='/log-in' element={<Login />} />

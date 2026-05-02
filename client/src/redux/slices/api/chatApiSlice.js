@@ -32,10 +32,19 @@ export const chatApiSlice = apiSlice.injectEndpoints({
         credentials: "include",
       }),
     }),
+    addChatRoomMembers: builder.mutation({
+      query: ({ key, invitedMembers }) => ({
+        url: `${CHAT_URL}/${key}/members`,
+        method: "PUT",
+        body: { invitedMembers },
+        credentials: "include",
+      }),
+    }),
   }),
 });
 
 export const {
+  useAddChatRoomMembersMutation,
   useCreateChatRoomMutation,
   useEndChatSessionMutation,
   useGetMyChatRoomsQuery,

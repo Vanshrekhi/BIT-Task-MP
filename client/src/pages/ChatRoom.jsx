@@ -3,6 +3,7 @@ import { io } from "socket.io-client";
 import { useSelector } from "react-redux";
 import { toast } from "sonner";
 import {
+  useAddChatRoomMembersMutation,
   useCreateChatRoomMutation,
   useEndChatSessionMutation,
   useGetMyChatRoomsQuery,
@@ -23,12 +24,15 @@ const ChatRoom = () => {
   const [messages, setMessages] = useState([]);
   const [pendingJoinRequests, setPendingJoinRequests] = useState([]);
   const [selectedInvitees, setSelectedInvitees] = useState([]);
+  const [selectedMembersToAdd, setSelectedMembersToAdd] = useState([]);
   const activeKeyRef = useRef("");
 
   const { data: teamData = [] } = useGetTeamListsQuery({ search: "", scope: "chat" });
   const { data: roomData, refetch } = useGetMyChatRoomsQuery();
   const [createChatRoom, { isLoading: isCreating }] = useCreateChatRoomMutation();
   const [endChatSession, { isLoading: isEnding }] = useEndChatSessionMutation();
+  const [addChatRoomMembers, { isLoading: isAddingMembers }] =
+    useAddChatRoomMembersMutation();
 
   const activeRoom = useMemo(
     () => roomData?.rooms?.find((room) => room.key === activeKey),
@@ -160,6 +164,21 @@ const ChatRoom = () => {
     }
   };
 
+  const handleAddMembers = async () => {
+    if (!activeKey || selectedMembersToAdd.length === 0) return;
+    try {
+      const res = await addChatRoomMembers({
+        key: activeKey,
+        invitedMembers: selectedMembersToAdd,
+      }).unwrap();
+      toast.success(res?.message || "Members added.");
+      setSelectedMembersToAdd([]);
+      refetch();
+    } catch (error) {
+      toast.error(error?.data?.message || "Unable to add members.");
+    }
+  };
+
   return (
     <div className='space-y-4'>
       <h1 className='text-2xl font-bold text-gray-700'>Team Chat Room</h1>
@@ -207,6 +226,38 @@ const ChatRoom = () => {
         </div>
       </div>
 
+      {activeRoom?.host?._id === user?._id && activeKey && (
+        <div className='bg-white rounded shadow p-4 space-y-3'>
+          <p className='font-semibold'>Add Members to Active Room</p>
+          <select
+            multiple
+            className='w-full border rounded p-2'
+            value={selectedMembersToAdd}
+            onChange={(e) =>
+              setSelectedMembersToAdd(
+                Array.from(e.target.selectedOptions).map((option) => option.value)
+              )
+            }
+          >
+            {teamData
+              .filter((member) => member._id !== user?._id)
+              .map((member) => (
+                <option key={member._id} value={member._id}>
+                  {member.name} ({member.role})
+                </option>
+              ))}
+          </select>
+          <button
+            type='button'
+            disabled={isAddingMembers}
+            onClick={handleAddMembers}
+            className='bg-indigo-600 text-white rounded px-4 py-2'
+          >
+            Add Selected Members
+          </button>
+        </div>
+      )}
+
       {pendingJoinRequests.length > 0 && (
         <div className='bg-white rounded shadow p-4 space-y-2'>
           <p className='font-semibold'>Pending Join Requests</p>
@@ -250,7 +301,10 @@ const ChatRoom = () => {
         <div className='h-64 overflow-y-auto border rounded p-2 space-y-2'>
           {messages.map((message, index) => (
             <div key={`${message?.sentAt}-${index}`}>
-              <span className='font-semibold mr-2'>{message?.sender?.name || "User"}:</span>
+              <span className='font-semibold mr-2'>
+                {message?.sender?.name || "User"}
+                {message?.sender?.role ? ` (${message.sender.role})` : ""}:
+              </span>
               <span>{message?.text}</span>
             </div>
           ))}

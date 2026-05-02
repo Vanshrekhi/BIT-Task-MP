@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import moment from "moment";
 import { useEffect } from "react";
+import { toast } from "sonner";
 import { FaNewspaper, FaUsers } from "react-icons/fa";
 import { FaArrowsToDot } from "react-icons/fa6";
 import { LuClipboardEdit } from "react-icons/lu";
@@ -14,7 +15,11 @@ import {
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { Chart, Loading, UserInfo } from "../components";
-import { useGetDasboardStatsQuery } from "../redux/slices/api/taskApiSlice";
+import PendingApprovalsPanel from "../components/PendingApprovalsPanel";
+import {
+  useGetDasboardStatsQuery,
+  useLazyGetReportPdfQuery,
+} from "../redux/slices/api/taskApiSlice";
 import { BGS, PRIOTITYSTYELS, TASK_TYPE, getInitials } from "../utils";
 
 const StatCard = ({ label, count, bg, icon }) => (
@@ -38,7 +43,25 @@ const ICONS = {
 
 const AdminDashboard = () => {
   const { data, isLoading } = useGetDasboardStatsQuery();
+  const [downloadReport, { isFetching: downloadingReport }] = useLazyGetReportPdfQuery();
   const navigate = useNavigate();
+
+  const handleDownload = async (period) => {
+    try {
+      const blob = await downloadReport(period).unwrap();
+      const fileUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = fileUrl;
+      link.download = period === "yearly" ? "yearly-task-report.pdf" : "task-report.pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(fileUrl);
+      toast.success("Report downloaded.");
+    } catch (err) {
+      toast.error(err?.data?.message || "Failed to download report.");
+    }
+  };
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
@@ -58,11 +81,33 @@ const AdminDashboard = () => {
 
   return (
     <div className="h-full py-4">
+      <div className="mb-6">
+        <PendingApprovalsPanel title="Principal & HOD approval requests" />
+      </div>
+
       {/* Welcome Banner */}
       <div className="w-full bg-blue-700 text-white rounded-xl p-6 mb-6 flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Admin Dashboard 👑</h2>
           <p className="text-blue-200 mt-1">Manage your team and assign tasks from here</p>
+          <div className='flex flex-wrap gap-2 mt-3'>
+            <button
+              type='button'
+              onClick={() => handleDownload("all")}
+              disabled={downloadingReport}
+              className='px-3 py-1.5 text-sm rounded bg-white text-blue-700 font-medium disabled:opacity-60'
+            >
+              Download Task Report (PDF)
+            </button>
+            <button
+              type='button'
+              onClick={() => handleDownload("yearly")}
+              disabled={downloadingReport}
+              className='px-3 py-1.5 text-sm rounded bg-blue-900 text-white font-medium disabled:opacity-60'
+            >
+              Download Yearly Report (PDF)
+            </button>
+          </div>
         </div>
         <MdAdminPanelSettings className="text-6xl text-blue-300" />
       </div>
