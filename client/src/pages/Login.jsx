@@ -15,9 +15,11 @@ const Login = () => {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm();
 
+  const role = watch("role");
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const [login, { isLoading }] = useLoginMutation();
@@ -132,20 +134,22 @@ const Login = () => {
             )}
           </div>
 
-          <div className='w-full flex flex-col gap-1'>
-            <span className='text-xs text-slate-900'>Department</span>
-            <select
-              className='border border-gray-300 rounded px-2 py-1.5 text-sm outline-none focus:ring-2 ring-blue-300'
-              {...register("department")}
-            >
-              <option value=''>Any</option>
-              {DEPARTMENTS.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </div>
+          {(role && role !== "Admin" && role !== "Principal") && (
+            <div className='w-full flex flex-col gap-1'>
+              <span className='text-xs text-slate-900'>Department</span>
+              <select
+                className='border border-gray-300 rounded px-2 py-1.5 text-sm outline-none focus:ring-2 ring-blue-300'
+                {...register("department")}
+              >
+                <option value=''>Any</option>
+                {DEPARTMENTS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {isLoading ? (

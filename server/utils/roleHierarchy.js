@@ -21,11 +21,9 @@ export function getRoleRank(user) {
 
 export function canAssignToTargetRank(creatorRank, targetRole) {
   const tr = normalizeRole(targetRole);
-  // Principal/Admin are top authority roles and must not be assignees.
-  if (tr === "Principal" || tr === "Admin") return false;
   const allowedByRank = {
-    [ROLE_RANK.Admin]: ["Principal", "HOD"],
-    [ROLE_RANK.Principal]: ["HOD"],
+    [ROLE_RANK.Admin]: ["Principal", "HOD", "Faculty", "Student"],
+    [ROLE_RANK.Principal]: ["Admin", "HOD", "Faculty"],
     [ROLE_RANK.HOD]: ["Faculty"],
     [ROLE_RANK.Faculty]: ["Student"],
   };
@@ -42,7 +40,7 @@ export function assertAssignableTeam(creator, assigneeUsers) {
     if (!canAssignToTargetRank(cr, u.role)) {
       return {
         ok: false,
-        message: `You cannot assign tasks to ${u.name || "a user"} (${u.role}). Allowed chain: Principal -> HOD, HOD -> Faculty, Faculty -> Student.`,
+        message: `You cannot assign tasks to ${u.name || "a user"} (${u.role}). Allowed assignment groups: Principal -> Admin/HOD/Faculty, HOD -> Faculty, Faculty -> Student.`,
       };
     }
   }

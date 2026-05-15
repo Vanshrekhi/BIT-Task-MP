@@ -96,6 +96,7 @@ export const userApiSlice = apiSlice.injectEndpoints({
         method: "GET",
         credentials: "include",
       }),
+      providesTags: ["PendingRequests"],
     }),
 
     approveUser: builder.mutation({
@@ -104,6 +105,7 @@ export const userApiSlice = apiSlice.injectEndpoints({
         method: "PUT",
         credentials: "include",
       }),
+      invalidatesTags: ["PendingRequests"],
     }),
 
     rejectUser: builder.mutation({
@@ -112,6 +114,7 @@ export const userApiSlice = apiSlice.injectEndpoints({
         method: "PUT",
         credentials: "include",
       }),
+      invalidatesTags: ["PendingRequests"],
     }),
   }),
 });

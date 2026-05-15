@@ -26,7 +26,7 @@ export default function PendingApprovalsPanel({ title = "Pending approvals" }) {
     try {
       const res = await approveUser(id).unwrap();
       toast.success(res?.message || "Approved");
-      refetch();
+      await refetch();
     } catch (e) {
       toast.error(e?.data?.message || e?.error || "Approve failed");
     }
@@ -36,7 +36,7 @@ export default function PendingApprovalsPanel({ title = "Pending approvals" }) {
     try {
       const res = await rejectUser(id).unwrap();
       toast.success(res?.message || "Rejected");
-      refetch();
+      await refetch();
     } catch (e) {
       toast.error(e?.data?.message || e?.error || "Reject failed");
     }
@@ -101,11 +101,7 @@ export default function PendingApprovalsPanel({ title = "Pending approvals" }) {
 
                 <div className='grid grid-cols-2 md:grid-cols-3 gap-x-3 gap-y-1'>
                   <Field label='Email' value={u.email} />
-                  <Field label='PRN' value={u.prn} />
-                  <Field label='Year' value={u.year} />
-                  <Field label='Section' value={u.section} />
-                  <Field label='Roll No' value={u.rollNo} />
-                  <Field label='Faculty role' value={u.facultyRole} />
+                  {u.role === "Student" && <Field label='PRN' value={u.prn} />}
                 </div>
               </div>
             ))}

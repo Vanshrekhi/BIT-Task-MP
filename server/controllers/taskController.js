@@ -84,11 +84,28 @@ async function validateAssigneesForCreator(creatorId, teamIds = []) {
 const createTask = asyncHandler(async (req, res) => {
   try {
     const { userId } = req.user;
-    const { title, team, stage, date, priority, assets } = req.body;
+    const {
+      title,
+      description,
+      taskType,
+      isRecurring,
+      recurrenceIntervalDays,
+      startDate,
+      endDate,
+      team,
+      stage,
+      date,
+      priority,
+      assets,
+    } = req.body;
 
     const assignCheck = await validateAssigneesForCreator(userId, team);
     if (!assignCheck.ok) {
       return res.status(assignCheck.status).json({ status: false, message: assignCheck.message });
+    }
+
+    if (isRecurring && (!recurrenceIntervalDays || recurrenceIntervalDays < 1)) {
+      return res.status(400).json({ status: false, message: "Recurrence interval is required for recurring tasks." });
     }
 
     //alert users of the task
@@ -99,7 +116,7 @@ const createTask = asyncHandler(async (req, res) => {
 
     text =
       text +
-      ` The task priority is set a ${priority} priority, so check and act accordingly. The task date is ${new Date(
+      ` The task priority is set as ${priority} priority, so check and act accordingly. The task date is ${new Date(
         date
       ).toDateString()}. Thank you!!!`;
 
@@ -111,6 +128,12 @@ const createTask = asyncHandler(async (req, res) => {
 
     const task = await Task.create({
       title,
+      description,
+      taskType,
+      isRecurring: Boolean(isRecurring),
+      recurrenceIntervalDays: isRecurring ? Number(recurrenceIntervalDays) : null,
+      startDate: startDate || null,
+      endDate: endDate || null,
       team,
       stage: stage.toLowerCase(),
       date,
@@ -128,9 +151,7 @@ const createTask = asyncHandler(async (req, res) => {
 
     await safeEnqueueAssignmentEmail({ taskId: task._id, userId });
 
-    res
-      .status(200)
-      .json({ status: true, task, message: "Task created successfully." });
+    res.status(200).json({ status: true, task, message: "Task created successfully." });
   } catch (error) {
     console.log(error);
     return res.status(400).json({ status: false, message: error.message });
@@ -174,6 +195,12 @@ const duplicateTask = asyncHandler(async (req, res) => {
 
     const newTask = await Task.create({
       title: "Duplicate - " + task.title,
+      description: task.description,
+      taskType: task.taskType,
+      isRecurring: task.isRecurring,
+      recurrenceIntervalDays: task.recurrenceIntervalDays,
+      startDate: task.startDate,
+      endDate: task.endDate,
       team: task.team,
       subTasks: task.subTasks || [],
       assets: task.assets || [],
@@ -205,7 +232,20 @@ const duplicateTask = asyncHandler(async (req, res) => {
 const updateTask = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { userId } = req.user;
-  const { title, date, team, stage, priority, assets } = req.body;
+  const {
+    title,
+    description,
+    taskType,
+    isRecurring,
+    recurrenceIntervalDays,
+    startDate,
+    endDate,
+    date,
+    team,
+    stage,
+    priority,
+    assets,
+  } = req.body;
 
   try {
     const task = await Task.findById(id);
@@ -226,6 +266,12 @@ const updateTask = asyncHandler(async (req, res) => {
     const prevStage = String(task.stage || "").toLowerCase();
 
     task.title = title;
+    task.description = description;
+    task.taskType = taskType;
+    task.isRecurring = Boolean(isRecurring);
+    task.recurrenceIntervalDays = task.isRecurring ? Number(recurrenceIntervalDays) : null;
+    task.startDate = startDate || null;
+    task.endDate = endDate || null;
     task.date = date;
     task.priority = priority.toLowerCase();
     task.assets = assets;
@@ -506,22 +552,37 @@ const dashboardStatistics = asyncHandler(async (req, res) => {
       })
       .sort({ _id: -1 });
 
-    let usersQuery = { isActive: true, status: "approved" };
-    if (isPrincipal) {
-      // recent org members
-    } else if (r === "HOD") {
-      usersQuery.department = normalizeDept(department);
-    } else if (r === "Faculty") {
-      usersQuery.department = normalizeDept(department);
-      usersQuery.role = "Student";
-    } else {
-      usersQuery = { _id: userId };
-    }
+    let users = [];
 
-    const users = await User.find(usersQuery)
-      .select("name title role isActive createdAt department")
-      .limit(10)
-      .sort({ _id: -1 });
+    if (isPrincipal) {
+      const usersQuery = { isActive: true, status: "approved", role: { $ne: "Student" } };
+      users = await User.find(usersQuery)
+        .select("name title role isActive createdAt department")
+        .limit(10)
+        .sort({ _id: -1 });
+    } else if (r === "HOD") {
+      const usersQuery = {
+        isActive: true,
+        status: "approved",
+        department: normalizeDept(department),
+        role: "Faculty",
+      };
+      users = await User.find(usersQuery)
+        .select("name title role isActive createdAt department")
+        .limit(10)
+        .sort({ _id: -1 });
+    } else if (r === "Faculty") {
+      const usersQuery = {
+        isActive: true,
+        status: "approved",
+        department: normalizeDept(department),
+        role: "Faculty",
+      };
+      users = await User.find(usersQuery)
+        .select("name title role isActive createdAt department")
+        .limit(10)
+        .sort({ _id: -1 });
+    }
 
     // Group tasks by stage and calculate counts
     const groupedTasks = allTasks?.reduce((result, task) => {
@@ -534,6 +595,7 @@ const dashboardStatistics = asyncHandler(async (req, res) => {
       }
 
       return result;
+
     }, {});
 
     const graphData = Object.entries(

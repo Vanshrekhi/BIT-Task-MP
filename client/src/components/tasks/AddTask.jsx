@@ -24,6 +24,24 @@ import UserList from "./UsersSelect";
 
 const LISTS = ["TODO", "IN PROGRESS", "COMPLETED"];
 const PRIORIRY = ["HIGH", "MEDIUM", "NORMAL", "LOW"];
+const TASK_TYPES = [
+  "Assignment",
+  "Examination and Evaluation Task",
+  "Administrative Task",
+  "Faculty Task",
+  "Student Task",
+];
+const RECURRING_OPTIONS = ["Non recurring", "Monthly", "Weekly", "After 15 days"];
+
+const getRecurrenceLabel = (days) => {
+  const map = { 30: "Monthly", 7: "Weekly", 15: "After 15 days" };
+  return map[days] || "Non recurring";
+};
+
+const getRecurrenceDays = (label) => {
+  const map = { Monthly: 30, Weekly: 7, "After 15 days": 15 };
+  return map[label] || null;
+};
 
 const uploadedFileURLs = [];
 
@@ -61,7 +79,11 @@ const uploadFile = async (file) => {
 const AddTask = ({ open, setOpen, task }) => {
   const defaultValues = {
     title: task?.title || "",
-    date: dateFormatter(task?.date || new Date()),
+    description: task?.description || "",
+    taskType: task?.taskType || TASK_TYPES[0],
+    recurrenceOption: task?.isRecurring ? getRecurrenceLabel(task.recurrenceIntervalDays) : "Non recurring",
+    startDate: dateFormatter(task?.startDate || task?.date || new Date()),
+    endDate: dateFormatter(task?.endDate || task?.date || new Date()),
     team: [],
     stage: "",
     priority: "",
@@ -70,6 +92,7 @@ const AddTask = ({ open, setOpen, task }) => {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm({ defaultValues });
 
@@ -78,6 +101,7 @@ const AddTask = ({ open, setOpen, task }) => {
   const [priority, setPriority] = useState(
     task?.priority?.toUpperCase() || PRIORIRY[2]
   );
+  const recurrenceOption = watch("recurrenceOption");
   const [assets, setAssets] = useState([]);
   const [uploading, setUploading] = useState(false);
 
@@ -99,8 +123,11 @@ const AddTask = ({ open, setOpen, task }) => {
     }
 
     try {
+      const recurrenceIntervalDays = getRecurrenceDays(data.recurrenceOption);
       const newData = {
         ...data,
+        isRecurring: data.recurrenceOption !== "Non recurring",
+        recurrenceIntervalDays,
         assets: [...URLS, ...uploadedFileURLs],
         team,
         stage,
@@ -148,8 +175,26 @@ const AddTask = ({ open, setOpen, task }) => {
               })}
               error={errors.title ? errors.title.message : ""}
             />
+            <div className='flex flex-col gap-4'>
+              <div className='w-full'>
+                <label className='text-slate-900'>Task Description</label>
+                <textarea
+                  rows={4}
+                  className='w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 ring-blue-300'
+                  {...register("description", {
+                    required: "Description is required!",
+                  })}
+                  placeholder='Write a detailed task description or message'
+                />
+                {errors.description && (
+                  <span className='text-xs text-[#f64949fe] mt-0.5'>
+                    {errors.description.message}
+                  </span>
+                )}
+              </div>
+            </div>
             <UserList setTeam={setTeam} team={team} />
-            <div className='flex gap-4'>
+            <div className='grid gap-4 md:grid-cols-3'>
               <SelectList
                 label='Task Stage'
                 lists={LISTS}
@@ -162,39 +207,79 @@ const AddTask = ({ open, setOpen, task }) => {
                 selected={priority}
                 setSelected={setPriority}
               />
+              <div className='w-full'>
+                <span className='text-sm text-slate-900'>Task Type</span>
+                <select
+                  className='w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 ring-blue-300'
+                  {...register("taskType", { required: "Task type is required!" })}
+                >
+                  {TASK_TYPES.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+                {errors.taskType && (
+                  <span className='text-xs text-[#f64949fe] mt-0.5'>
+                    {errors.taskType.message}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className='grid gap-4 md:grid-cols-3'>
+              <Textbox
+                placeholder='Start date'
+                type='date'
+                name='startDate'
+                label='Task Start Date'
+                className='w-full rounded'
+                register={register("startDate", {
+                  required: "Start date is required!",
+                })}
+                error={errors.startDate ? errors.startDate.message : ""}
+              />
+              <Textbox
+                placeholder='End date'
+                type='date'
+                name='endDate'
+                label='Task End Date'
+                className='w-full rounded'
+                register={register("endDate", {
+                  required: "End date is required!",
+                })}
+                error={errors.endDate ? errors.endDate.message : ""}
+              />
+              <div className='w-full'>
+                <span className='text-sm text-slate-900'>Recurrence</span>
+                <select
+                  className='w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 ring-blue-300'
+                  {...register("recurrenceOption")}
+                >
+                  {RECURRING_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div className='flex gap-4'>
-              <div className='w-full'>
-                <Textbox
-                  placeholder='Date'
-                  type='date'
-                  name='date'
-                  label='Task Date'
-                  className='w-full rounded'
-                  register={register("date", {
-                    required: "Date is required!",
-                  })}
-                  error={errors.date ? errors.date.message : ""}
+            <div className='w-full flex items-center justify-center mt-4'>
+              <label
+                className='flex items-center gap-1 text-base text-ascent-2 hover:text-ascent-1 cursor-pointer my-4'
+                htmlFor='imgUpload'
+              >
+                <input
+                  type='file'
+                  className='hidden'
+                  id='imgUpload'
+                  onChange={(e) => handleSelect(e)}
+                  accept='.jpg, .png, .jpeg'
+                  multiple={true}
                 />
-              </div>
-              <div className='w-full flex items-center justify-center mt-4'>
-                <label
-                  className='flex items-center gap-1 text-base text-ascent-2 hover:text-ascent-1 cursor-pointer my-4'
-                  htmlFor='imgUpload'
-                >
-                  <input
-                    type='file'
-                    className='hidden'
-                    id='imgUpload'
-                    onChange={(e) => handleSelect(e)}
-                    accept='.jpg, .png, .jpeg'
-                    multiple={true}
-                  />
-                  <BiImages />
-                  <span>Add Assets</span>
-                </label>
-              </div>
+                <BiImages />
+                <span>Add Assets</span>
+              </label>
             </div>
           </div>
 

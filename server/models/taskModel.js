@@ -3,6 +3,22 @@ import mongoose, { Schema } from "mongoose";
 const taskSchema = new Schema(
   {
     title: { type: String, required: true },
+    description: { type: String, trim: true, default: "" },
+    taskType: {
+      type: String,
+      default: "Assignment",
+      enum: [
+        "Assignment",
+        "Examination and Evaluation Task",
+        "Administrative Task",
+        "Faculty Task",
+        "Student Task",
+      ],
+    },
+    isRecurring: { type: Boolean, default: false },
+    recurrenceIntervalDays: { type: Number, default: null },
+    startDate: { type: Date, default: null },
+    endDate: { type: Date, default: null },
     date: { type: Date, default: new Date() },
     priority: {
       type: String,
@@ -46,6 +62,7 @@ const taskSchema = new Schema(
     reminderMeta: {
       lastReminderSentAt: { type: Date, default: null },
       lastEscalationSentAt: { type: Date, default: null },
+      lastRecurrenceCreatedAt: { type: Date, default: null },
     },
     isTrashed: { type: Boolean, default: false },
   },

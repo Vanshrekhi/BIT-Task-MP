@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { FaList } from "react-icons/fa";
 import { IoMdAdd } from "react-icons/io";
 import { MdGridView } from "react-icons/md";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Button, Loading, Table, Tabs, Title } from "../components";
 import { AddTask, BoardView, TaskTitle } from "../components/tasks";
 import { useGetAllTaskQuery } from "../redux/slices/api/taskApiSlice";
@@ -24,6 +24,8 @@ const Tasks = () => {
   const [open, setOpen] = useState(false);
 
   const status = params?.status || "";
+
+  const navigate = useNavigate();
 
   const { data, isLoading, refetch } = useGetAllTaskQuery({
     strQuery: status,
@@ -59,12 +61,21 @@ const Tasks = () => {
         <Tabs tabs={TABS} setSelected={setSelected}>
           {!status && (
             <div className='w-full flex justify-between gap-4 md:gap-x-12 py-4'>
-              <TaskTitle label='Assigned' className={TASK_TYPE.todo} />
+              <TaskTitle
+                label='Assigned'
+                className={TASK_TYPE.todo}
+                onClick={() => navigate("/todo/todo")}
+              />
               <TaskTitle
                 label='In Progress'
                 className={TASK_TYPE["in progress"]}
+                onClick={() => navigate("/in-progress/in progress")}
               />
-              <TaskTitle label='Completed' className={TASK_TYPE.completed} />
+              <TaskTitle
+                label='Completed'
+                className={TASK_TYPE.completed}
+                onClick={() => navigate("/completed/completed")}
+              />
             </div>
           )}
 

@@ -10,7 +10,7 @@ import { setCredentials } from "../redux/slices/authSlice";
 const ROLES = ["Admin", "Principal", "HOD", "Faculty", "Student"];
 const DEPARTMENTS = ["COMP", "IT", "ENTC", "MECH", "CIVIL", "OTHER"];
 const YEARS = ["FE", "SE", "TE", "BE"];
-const FACULTY_ROLES = ["Faculty", "Student Incharge", "Project Guide"];
+const FACULTY_ROLES = ["Faculty", "Student Incharge"];
 
 const Register = () => {
   const { user } = useSelector((state) => state.auth);
@@ -90,7 +90,7 @@ const Register = () => {
     if (user) navigate("/");
   }, [user]);
 
-  // Reset role-specific fields when role changes
+  // Reset role-specific fields when role or department changes
   useEffect(() => {
     setValue("prn", "");
     setValue("department", "");
@@ -101,6 +101,12 @@ const Register = () => {
     setValue("subjectsSkills", "");
     setValue("secretKey", "");
   }, [role]);
+
+  useEffect(() => {
+    if (department !== "COMP") {
+      setValue("section", "");
+    }
+  }, [department, setValue]);
 
   return (
     <div className='w-full min-h-screen flex items-center justify-center bg-[#f3f4f6]'>
@@ -136,32 +142,32 @@ const Register = () => {
               )}
             </div>
 
-            <div className='w-full flex flex-col gap-1'>
-              <span className='text-xs text-slate-900'>Department</span>
-              <select
-                className='border border-gray-300 rounded px-2 py-1.5 text-sm outline-none focus:ring-2 ring-blue-300'
-                {...register("department", {
-                  validate: (val) => {
-                    if (role === "Principal" || role === "Admin") return true;
-                    if (!role) return true;
-                    return val ? true : "Department is required!";
-                  },
-                })}
-                disabled={!role || role === "Principal" || role === "Admin"}
-              >
-                <option value=''>Select</option>
-                {DEPARTMENTS.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-              {errors.department && (
-                <span className='text-xs text-[#f64949fe]'>
-                  {errors.department.message}
-                </span>
-              )}
-            </div>
+            {(role && role !== "Principal" && role !== "Admin") && (
+              <div className='w-full flex flex-col gap-1'>
+                <span className='text-xs text-slate-900'>Department</span>
+                <select
+                  className='border border-gray-300 rounded px-2 py-1.5 text-sm outline-none focus:ring-2 ring-blue-300'
+                  {...register("department", {
+                    validate: (val) => {
+                      if (!role) return true;
+                      return val ? true : "Department is required!";
+                    },
+                  })}
+                >
+                  <option value=''>Select</option>
+                  {DEPARTMENTS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+                {errors.department && (
+                  <span className='text-xs text-[#f64949fe]'>
+                    {errors.department.message}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <Textbox
@@ -220,7 +226,7 @@ const Register = () => {
             />
           )}
 
-          {(role === "Faculty" || role === "Student") && (
+          {role === "Student" && (
             <div className='grid grid-cols-2 gap-2'>
               <div className='w-full flex flex-col gap-1'>
                 <span className='text-xs text-slate-900'>Year</span>
@@ -240,25 +246,20 @@ const Register = () => {
                 )}
               </div>
 
-              {showSection ? (
-                <Textbox
-                  placeholder='Section'
-                  type='text'
-                  name='section'
-                  label='Section'
-                  labelClass='text-xs'
-                  className='w-full rounded px-2 py-1.5 text-sm'
-                  register={register("section", { required: "Section is required!" })}
-                  error={errors.section?.message || ""}
-                />
-              ) : (
+              {showSection && (
                 <div className='w-full flex flex-col gap-1'>
                   <span className='text-xs text-slate-900'>Section</span>
-                  <input
-                    className='border border-gray-200 rounded px-2 py-1.5 text-sm bg-gray-50'
-                    value={showSection ? department : "N/A"}
-                    disabled
-                  />
+                  <select
+                    className='border border-gray-300 rounded px-2 py-1.5 text-sm outline-none focus:ring-2 ring-blue-300'
+                    {...register("section", { required: "Section is required!" })}
+                  >
+                    <option value=''>Select</option>
+                    <option value='A'>A</option>
+                    <option value='B'>B</option>
+                  </select>
+                  {errors.section && (
+                    <span className='text-xs text-[#f64949fe]'>{errors.section.message}</span>
+                  )}
                 </div>
               )}
             </div>

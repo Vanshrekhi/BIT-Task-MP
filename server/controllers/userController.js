@@ -467,7 +467,10 @@ const getTeamList = asyncHandler(async (req, res) => {
   if (forChat) {
     // Everyone approved — chat room invites
   } else if (requester.isAdmin || requesterRole === "Principal") {
-    // All members; optional department/year/section filters from UI
+    if (requesterRole === "Principal") {
+      visibilityQuery.role = { $in: ["Admin", "HOD", "Faculty"] };
+    }
+    // Optional department/year/section filters from UI
     if (department) visibilityQuery.department = deptCaseInsensitiveMatch(normalizeDept(department));
     if (year) visibilityQuery.year = String(year).trim();
     if (section) visibilityQuery.section = String(section).trim();
@@ -483,17 +486,12 @@ const getTeamList = asyncHandler(async (req, res) => {
         ...(section ? { section: String(section).trim() } : {}),
       };
     } else {
-    visibilityQuery = {
-      $or: [
-        { role: { $in: ["Admin", "Principal"] } },
-        {
-          department: deptCaseInsensitiveMatch(requesterDept),
-          role: { $in: ["HOD", "Faculty", "Student"] },
-          ...(year ? { year: String(year).trim() } : {}),
-          ...(section ? { section: String(section).trim() } : {}),
-        },
-      ],
-    };
+      visibilityQuery = {
+        department: deptCaseInsensitiveMatch(requesterDept),
+        role: "Faculty",
+        ...(year ? { year: String(year).trim() } : {}),
+        ...(section ? { section: String(section).trim() } : {}),
+      };
     }
   } else if (requesterRole === "Faculty") {
     if (!requesterDept) {
@@ -508,15 +506,10 @@ const getTeamList = asyncHandler(async (req, res) => {
       };
     } else {
       visibilityQuery = {
-        $or: [
-          { role: { $in: ["Admin", "Principal"] } },
-          {
-            department: deptCaseInsensitiveMatch(requesterDept),
-            role: { $in: ["HOD", "Faculty", "Student"] },
-            ...(year ? { year: String(year).trim() } : {}),
-            ...(section ? { section: String(section).trim() } : {}),
-          },
-        ],
+        department: deptCaseInsensitiveMatch(requesterDept),
+        role: "Faculty",
+        ...(year ? { year: String(year).trim() } : {}),
+        ...(section ? { section: String(section).trim() } : {}),
       };
     }
   } else {
@@ -527,6 +520,9 @@ const getTeamList = asyncHandler(async (req, res) => {
   if (requestedRole) {
     query.role = requestedRole;
   }
+
+  // Exclude the current user from the team list
+  query._id = { $ne: req.user.userId };
 
   // Team page should not include Students; enforce via query param.
   // (Students page explicitly requests role=Student.)
