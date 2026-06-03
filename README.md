@@ -478,14 +478,8 @@ ISC
 
 ## 👨‍💼 Authors
 
-- **Codewave Team**
+- **Vansh Rekhi
+- Vedika Pande**
 
 ---
 
-## 🤝 Support
-
-For issues, bug reports, or feature requests, please open an issue on the repository.
-
----
-
-**Happy Task Managing! 🎉**
